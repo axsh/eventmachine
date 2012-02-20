@@ -183,7 +183,12 @@ module EventMachine
           add_timer(0) { signal_loopbreak }
         end
         @reactor_thread = Thread.current
-        run_machine
+
+        if defined?(RUBY_ENGINE) and RUBY_ENGINE == "rbx"
+          while run_one_shot_machine; end
+        else
+          run_machine
+        end
       ensure
         until @tails.empty?
           @tails.pop.call

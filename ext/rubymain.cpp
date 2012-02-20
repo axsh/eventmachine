@@ -224,6 +224,14 @@ static VALUE t_run_machine_without_threads (VALUE self)
 	return Qnil;
 }
 
+/*****************************
+t_run_machine_without_threads
+*****************************/
+
+static VALUE t_run_one_shot_machine (VALUE self)
+{
+	return (evma_run_one_shot_machine() ? Qtrue : Qfalse);
+}
 
 /*******************
 t_add_oneshot_timer
@@ -1162,6 +1170,7 @@ extern "C" void Init_rubyeventmachine()
 	rb_define_module_function (EmModule, "initialize_event_machine", (VALUE(*)(...))t_initialize_event_machine, 0);
 	rb_define_module_function (EmModule, "run_machine", (VALUE(*)(...))t_run_machine_without_threads, 0);
 	rb_define_module_function (EmModule, "run_machine_without_threads", (VALUE(*)(...))t_run_machine_without_threads, 0);
+	rb_define_module_function (EmModule, "run_one_shot_machine", (VALUE(*)(...))t_run_one_shot_machine, 0);
 	rb_define_module_function (EmModule, "add_oneshot_timer", (VALUE(*)(...))t_add_oneshot_timer, 1);
 	rb_define_module_function (EmModule, "start_tcp_server", (VALUE(*)(...))t_start_server, 2);
 	rb_define_module_function (EmModule, "stop_tcp_server", (VALUE(*)(...))t_stop_server, 1);

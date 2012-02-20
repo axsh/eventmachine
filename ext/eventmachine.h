@@ -42,6 +42,7 @@ extern "C" {
 
 	void evma_initialize_library (EMCallback);
 	void evma_run_machine();
+	int evma_run_one_shot_machine();
 	void evma_release_library();
 	const unsigned long evma_install_oneshot_timer (int seconds);
 	const unsigned long evma_connect_to_server (const char *bind_addr, int bind_port, const char *server, int port);

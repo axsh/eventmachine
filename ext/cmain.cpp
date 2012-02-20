@@ -89,6 +89,17 @@ extern "C" void evma_run_machine()
 }
 
 
+/****************
+evma_run_machine
+****************/
+
+extern "C" int evma_run_one_shot_machine()
+{
+	ensure_eventmachine("evma_run_machine");
+	return EventMachine->RunOneShot();
+}
+
+
 /**************************
 evma_install_oneshot_timer
 **************************/

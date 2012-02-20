@@ -75,6 +75,7 @@ class EventMachine_t
 		virtual ~EventMachine_t();
 
 		void Run();
+		int RunOneShot();
 		void ScheduleHalt();
 		void SignalLoopBreaker();
 		const unsigned long InstallOneshotTimer (int);

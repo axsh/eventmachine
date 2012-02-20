@@ -2351,3 +2351,60 @@ int EventMachine_t::SetHeartbeatInterval(float interval)
 }
 //#endif // OS_UNIX
 
+
+int EventMachine_t::RunOneShot()
+{
+	#ifdef HAVE_EPOLL
+	if (bEpoll && epfd == -1) {
+		epfd = epoll_create (MaxEpollDescriptors);
+		if (epfd == -1) {
+			char buf[200];
+			snprintf (buf, sizeof(buf)-1, "unable to create epoll descriptor: %s", strerror(errno));
+			throw std::runtime_error (buf);
+		}
+		int cloexec = fcntl (epfd, F_GETFD, 0);
+		assert (cloexec >= 0);
+		cloexec |= FD_CLOEXEC;
+		fcntl (epfd, F_SETFD, cloexec);
+
+		assert (LoopBreakerReader >= 0);
+		LoopbreakDescriptor *ld = new LoopbreakDescriptor (LoopBreakerReader, this);
+		assert (ld);
+		Add (ld);
+	}
+	#endif
+
+	#ifdef HAVE_KQUEUE
+	if (bKqueue && kqfd == -1) {
+		kqfd = kqueue();
+		if (kqfd == -1) {
+			char buf[200];
+			snprintf (buf, sizeof(buf)-1, "unable to create kqueue descriptor: %s", strerror(errno));
+			throw std::runtime_error (buf);
+		}
+		// cloexec not needed. By definition, kqueues are not carried across forks.
+
+		assert (LoopBreakerReader >= 0);
+		LoopbreakDescriptor *ld = new LoopbreakDescriptor (LoopBreakerReader, this);
+		assert (ld);
+		Add (ld);
+	}
+	#endif
+
+	_UpdateTime();
+	_RunTimers();
+
+	/* _Add must precede _Modify because the same descriptor might
+	 * be on both lists during the same pass through the machine,
+	 * and to modify a descriptor before adding it would fail.
+	 */
+	_AddNewDescriptors();
+	_ModifyDescriptors();
+
+	if (!_RunOnce())
+		return 0;
+	if (bTerminateSignalReceived)
+		return 0;
+
+	return 1;
+}
