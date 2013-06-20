@@ -61,6 +61,7 @@ EventableDescriptor::EventableDescriptor (int sd, EventMachine_t *em):
 	UnbindReasonCode (0),
 	ProxyTarget(NULL),
 	ProxiedFrom(NULL),
+	ProxiedBytes(0),
 	MaxOutboundBufSize(0),
 	MyEventMachine (em),
 	PendingConnectTimeout(20000000),
@@ -216,6 +217,8 @@ EventableDescriptor::ScheduleClose
 
 void EventableDescriptor::ScheduleClose (bool after_writing)
 {
+	if (IsCloseScheduled())
+		return;
 	MyEventMachine->NumCloseScheduled++;
 	// KEEP THIS SYNCHRONIZED WITH ::IsCloseScheduled.
 	if (after_writing)
@@ -282,6 +285,7 @@ void EventableDescriptor::StartProxy(const unsigned long to, const unsigned long
 		StopProxy();
 		ProxyTarget = ed;
 		BytesToProxy = length;
+		ProxiedBytes = 0;
 		ed->SetProxiedFrom(this, bufsize);
 		return;
 	}
@@ -328,6 +332,7 @@ void EventableDescriptor::_GenericInboundDispatch(const char *buf, int size)
 		if (BytesToProxy > 0) {
 			unsigned long proxied = min(BytesToProxy, (unsigned long) size);
 			ProxyTarget->SendOutboundData(buf, proxied);
+			ProxiedBytes += (unsigned long) proxied;
 			BytesToProxy -= proxied;
 			if (BytesToProxy == 0) {
 				StopProxy();
@@ -338,6 +343,7 @@ void EventableDescriptor::_GenericInboundDispatch(const char *buf, int size)
 			}
 		} else {
 			ProxyTarget->SendOutboundData(buf, size);
+			ProxiedBytes += (unsigned long) size;
 		}
 	} else {
 		(*EventCallback)(GetBinding(), EM_CONNECTION_READ, buf, size);
@@ -491,6 +497,7 @@ ConnectionDescriptor::SetConnectPending
 void ConnectionDescriptor::SetConnectPending(bool f)
 {
 	bConnectPending = f;
+	MyEventMachine->QueueHeartbeat(this);
 	_UpdateEvents();
 }
 
@@ -795,7 +802,11 @@ void ConnectionDescriptor::Read()
 		
 
 		int r = read (sd, readbuffer, sizeof(readbuffer) - 1);
+#ifdef OS_WIN32
+		int e = WSAGetLastError();
+#else
 		int e = errno;
+#endif
 		//cerr << "<R:" << r << ">";
 
 		if (r > 0) {
@@ -1011,11 +1022,7 @@ void ConnectionDescriptor::_WriteOutboundData()
 	// Max of 16 outbound pages at a time
 	if (iovcnt > 16) iovcnt = 16;
 
-	#ifdef CC_SUNWspro
-	struct iovec iov[16];
-	#else
-	struct iovec iov[ iovcnt ];
-	#endif
+	iovec iov[16];
 
 	for(int i = 0; i < iovcnt; i++){
 		OutboundPage *op = &(OutboundPages[i]);
@@ -1062,7 +1069,11 @@ void ConnectionDescriptor::_WriteOutboundData()
 	#endif
 
 	bool err = false;
+#ifdef OS_WIN32
+	int e = WSAGetLastError();
+#else
 	int e = errno;
+#endif
 	if (bytes_written < 0) {
 		err = true;
 		bytes_written = 0;
@@ -1480,14 +1491,16 @@ void AcceptorDescriptor::Read()
 			(*EventCallback) (GetBinding(), EM_CONNECTION_ACCEPTED, NULL, cd->GetBinding());
 		}
 		#ifdef HAVE_EPOLL
-		cd->GetEpollEvent()->events = EPOLLIN | (cd->SelectForWrite() ? EPOLLOUT : 0);
+		cd->GetEpollEvent()->events =
+			(cd->SelectForRead() ? EPOLLIN : 0) | (cd->SelectForWrite() ? EPOLLOUT : 0);
 		#endif
 		assert (MyEventMachine);
 		MyEventMachine->Add (cd);
 		#ifdef HAVE_KQUEUE
 		if (cd->SelectForWrite())
 			MyEventMachine->ArmKqueueWriter (cd);
-		MyEventMachine->ArmKqueueReader (cd);
+		if (cd->SelectForRead())
+			MyEventMachine->ArmKqueueReader (cd);
 		#endif
 	}
 
@@ -1695,7 +1708,11 @@ void DatagramDescriptor::Write()
 
 		// The nasty cast to (char*) is needed because Windows is brain-dead.
 		int s = sendto (sd, (char*)op->Buffer, op->Length, 0, (struct sockaddr*)&(op->From), sizeof(op->From));
+#ifdef OS_WIN32
+		int e = WSAGetLastError();
+#else
 		int e = errno;
+#endif
 
 		OutboundDataSize -= op->Length;
 		op->Free();
